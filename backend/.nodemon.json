@@ -1,0 +1,20 @@
+{
+  "watch": ["src"],
+  "ext": "js,json",
+  "ignore": [
+    "public/temp/**",
+    "**/*.mp4",
+    "**/*.avi", 
+    "**/*.mov",
+    "**/*.wmv",
+    "**/*.flv",
+    "**/*.webm",
+    "**/*.mkv",
+    "node_modules/**",
+    "*.log",
+    "*.tmp",
+    "*.temp"
+  ],
+  "delay": 1000,
+  "verbose": true
+}
