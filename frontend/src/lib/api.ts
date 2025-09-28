@@ -80,6 +80,7 @@ class ApiClient {
   private axiosInstance: AxiosInstance;
   private retryAttempts: number;
   private baseRetryDelay: number;
+  private tokenGetter: (() => Promise<string | null>) | null = null;
 
   constructor() {
     this.retryAttempts = MAX_RETRY_ATTEMPTS;
@@ -98,6 +99,11 @@ class ApiClient {
     this.setupInterceptors();
   }
 
+  // Method to set token getter from components
+  setTokenGetter(getter: () => Promise<string | null>) {
+    this.tokenGetter = getter;
+  }
+
   private setupInterceptors() {
     // Request interceptor with enhanced security
     this.axiosInstance.interceptors.request.use(
@@ -105,17 +111,14 @@ class ApiClient {
         const requestId = Math.random().toString(36).substring(2, 15);
         config.headers['X-Request-ID'] = requestId;
         
-        if (typeof window !== "undefined") {
+        // Get token using the provided token getter
+        if (this.tokenGetter) {
           try {
-            // Enhanced Clerk token handling
-            const clerk = (window as any).Clerk;
-            if (clerk && clerk.session) {
-              const token = await clerk.session.getToken();
-              if (token && typeof token === 'string' && token.length > 10) {
-                config.headers["Authorization"] = `Bearer ${token}`;
-              } else {
-                console.warn('⚠️ Invalid or missing auth token');
-              }
+            const token = await this.tokenGetter();
+            if (token && typeof token === 'string' && token.length > 10) {
+              config.headers["Authorization"] = `Bearer ${token}`;
+            } else {
+              console.warn('⚠️ Invalid or missing auth token');
             }
           } catch (error) {
             console.warn('🔐 Auth token retrieval failed:', error);

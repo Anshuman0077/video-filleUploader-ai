@@ -1,21 +1,21 @@
-"use client" // ADD THIS AT THE VERY TOP
+"use client";
 
-import { useUser, SignInButton, SignUpButton } from '@clerk/nextjs'
-import { useRouter } from 'next/navigation'
-import { useEffect } from 'react'
+import { useUser, SignInButton, SignUpButton } from '@clerk/nextjs';
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 
 export default function Home() {
-  const { isSignedIn } = useUser()
-  const router = useRouter()
+  const { isSignedIn } = useUser();
+  const router = useRouter();
 
   useEffect(() => {
     if (isSignedIn) {
-      router.push('/dashboard')
+      router.push('/dashboard');
     }
-  }, [isSignedIn, router])
+  }, [isSignedIn, router]);
 
   if (isSignedIn) {
-    return null
+    return null;
   }
 
   return (

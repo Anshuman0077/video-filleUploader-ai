@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useUser } from '@clerk/nextjs';
+import { useUser, useAuth } from '@clerk/nextjs'; // Added useAuth
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Video, VideoFilters } from '@/types';
@@ -13,6 +13,7 @@ import {
   FileText, BarChart3, Clock, CheckCircle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
+
 
 interface DashboardState {
   videos: Video[];
@@ -61,12 +62,16 @@ export default function Dashboard() {
     showUploadModal: false
   });
 
+  
+
   // Redirect if not authenticated
   useEffect(() => {
     if (isLoaded && !isSignedIn) {
       router.push('/sign-in');
     }
   }, [isSignedIn, isLoaded, router]);
+
+
 
   // Fetch videos with error handling
   const fetchVideos = useCallback(async (showLoading = true) => {
@@ -92,6 +97,10 @@ export default function Dashboard() {
       let errorMessage = 'Failed to load videos';
       if (error instanceof ApiClientError) {
         errorMessage = error.message;
+        if (error.status === 401) {
+          router.push('/sign-in');
+          return;
+        }
       }
       
       setState(prev => ({
@@ -102,12 +111,14 @@ export default function Dashboard() {
       
       toast.error(errorMessage);
     }
-  }, [isSignedIn, state.filters]);
+  }, [isSignedIn, state.filters, router]);
 
   // Initial load
   useEffect(() => {
-    fetchVideos();
-  }, [fetchVideos]);
+    if (isLoaded && isSignedIn) {
+      fetchVideos();
+    }
+  }, [fetchVideos, isLoaded, isSignedIn]);
 
   // Handle file selection
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {

@@ -12,9 +12,8 @@ import { socketService } from '@/lib/socket';
 import { getStatusBadgeClasses, getStatusIcon, getStatusDescription } from '@/lib/statusStyles';
 import toast from 'react-hot-toast';
 import {
-  Play, Pause, Volume2, Settings, Download, 
-  MessageCircle, FileText, Brain, Zap, Clock,
-  CheckCircle, AlertCircle, ArrowLeft, Sparkles
+  ArrowLeft, Brain, MessageCircle, FileText, 
+  Clock, AlertCircle, Zap, Sparkles
 } from 'lucide-react';
 
 const ReactPlayer = dynamic<ReactPlayerProps>(() => import('react-player'), { 
@@ -24,8 +23,15 @@ const ReactPlayer = dynamic<ReactPlayerProps>(() => import('react-player'), {
   </div>
 });
 
+// Simple Send icon component
+const Send = ({ className }: { className?: string }) => (
+  <svg className={className} fill="currentColor" viewBox="0 0 24 24">
+    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+  </svg>
+);
+
 export default function VideoPage() {
-  const { isSignedIn } = useUser();
+  const { isSignedIn, isLoaded } = useUser();
   const { getToken } = useAuth();
   const router = useRouter();
   const params = useParams();
@@ -43,7 +49,7 @@ export default function VideoPage() {
   const playerRef = useRef<any>(null);
 
   useEffect(() => {
-    if (!isSignedIn) {
+    if (!isSignedIn && isLoaded) {
       router.push('/sign-in');
       return;
     }
@@ -80,41 +86,47 @@ export default function VideoPage() {
         const apiError = error as ApiClientError;
         console.error('Error fetching video data:', apiError);
         toast.error(apiError.message || 'Failed to load video');
-        router.push('/dashboard');
+        if (apiError.status === 401) {
+          router.push('/sign-in');
+        } else {
+          router.push('/dashboard');
+        }
       }
     };
 
-    if (id) {
+    if (id && isSignedIn) {
       fetchVideoData();
     }
-  }, [id, isSignedIn, router]);
+  }, [id, isSignedIn, isLoaded, router]);
 
   useEffect(() => {
     // Setup socket connection for real-time updates
     if (video && (video.status === 'processing' || video.status === 'queued')) {
       const setupSocket = async () => {
         const token = await getToken();
-        const socket = socketService.connect(id, token);
-        
-        socket.on('video-processed', (data) => {
-          if (data.videoId === id) {
-            setIsProcessing(false);
-            setProcessingProgress(null);
-            // Refresh video data
-            apiClient.getVideo(id).then(setVideo);
-            toast.success('Video processing completed!');
-          }
-        });
+        if (token) {
+          const socket = socketService.connect(id, token);
+          
+          socket.on('video-processed', (data) => {
+            if (data.videoId === id) {
+              setIsProcessing(false);
+              setProcessingProgress(null);
+              // Refresh video data
+              apiClient.getVideo(id).then(setVideo);
+              toast.success('Video processing completed!');
+            }
+          });
 
-        socket.on('processing-progress', (data) => {
-          if (data.videoId === id) {
-            setProcessingProgress(data);
-          }
-        });
+          socket.on('processing-progress', (data) => {
+            if (data.videoId === id) {
+              setProcessingProgress(data);
+            }
+          });
 
-        socket.on('error', (error) => {
-          toast.error(error.message);
-        });
+          socket.on('error', (error) => {
+            toast.error(error.message);
+          });
+        }
       };
       
       setupSocket();
@@ -188,6 +200,10 @@ export default function VideoPage() {
     }
   };
 
+  const handleBackToDashboard = () => {
+    router.push('/dashboard');
+  };
+
   if (!video) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
@@ -208,7 +224,7 @@ export default function VideoPage() {
       <header className="bg-black/30 backdrop-blur-lg border-b border-white/10 shadow-2xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <button 
-            onClick={() => router.push('/dashboard')}
+            onClick={handleBackToDashboard}
             className="flex items-center text-cyan-100 hover:text-cyan-400 transition-colors"
           >
             <ArrowLeft className="h-5 w-5 mr-2" />
@@ -475,10 +491,3 @@ export default function VideoPage() {
     </div>
   );
 }
-
-// Simple Send icon component
-const Send = ({ className }: { className?: string }) => (
-  <svg className={className} fill="currentColor" viewBox="0 0 24 24">
-    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-  </svg>
-);
