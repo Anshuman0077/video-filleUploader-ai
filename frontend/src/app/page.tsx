@@ -2,22 +2,42 @@
 
 import { useUser, SignInButton, SignUpButton } from '@clerk/nextjs'
 import { useRouter } from 'next/navigation'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { 
   Brain, Zap, Play, MessageCircle, 
   FileText, Sparkles, ArrowRight,
-  CheckCircle, Video, Shield
+  CheckCircle, Video, Shield,
+  Loader2, AlertCircle
 } from 'lucide-react'
 
 export default function Home() {
-  const { isSignedIn } = useUser()
+  const { isSignedIn, isLoaded } = useUser()
   const router = useRouter()
+  const [isRedirecting, setIsRedirecting] = useState(false)
 
   useEffect(() => {
-    if (isSignedIn) {
-      router.push('/dashboard')
+    if (isLoaded && isSignedIn && !isRedirecting) {
+      setIsRedirecting(true)
+      // Add a small delay to show loading state
+      const timer = setTimeout(() => {
+        router.push('/dashboard')
+      }, 500)
+      
+      return () => clearTimeout(timer)
     }
-  }, [isSignedIn, router])
+  }, [isSignedIn, isLoaded, router, isRedirecting])
+
+  // Show loading state during redirect or initial load
+  if (!isLoaded || (isLoaded && isSignedIn && isRedirecting)) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="h-12 w-12 animate-spin text-cyan-400 mx-auto mb-4" aria-hidden="true" />
+          <p className="text-cyan-100 text-lg font-light">Loading...</p>
+        </div>
+      </div>
+    )
+  }
 
   const features = [
     {
@@ -55,18 +75,21 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
       {/* Hero Section */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-cyan-500/10 via-slate-900 to-slate-900"></div>
+      <section className="relative overflow-hidden" aria-labelledby="main-heading">
+        <div 
+          className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-cyan-500/10 via-slate-900 to-slate-900"
+          aria-hidden="true"
+        />
         
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-32">
           <div className="text-center">
             <div className="flex justify-center mb-6">
               <div className="bg-gradient-to-r from-cyan-500 to-blue-600 p-3 rounded-2xl shadow-2xl">
-                <Brain className="h-12 w-12 text-white" />
+                <Brain className="h-12 w-12 text-white" aria-hidden="true" />
               </div>
             </div>
             
-            <h1 className="text-5xl lg:text-7xl font-bold bg-gradient-to-r from-cyan-400 via-blue-500 to-cyan-400 bg-clip-text text-transparent animate-gradient-x">
+            <h1 id="main-heading" className="text-5xl lg:text-7xl font-bold bg-gradient-to-r from-cyan-400 via-blue-500 to-cyan-400 bg-clip-text text-transparent animate-gradient-x">
               VideoExplainer AI
             </h1>
             
@@ -77,17 +100,23 @@ export default function Home() {
             
             <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
               <SignInButton mode="modal">
-                <button className="group relative bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-2xl transition-all duration-300 transform hover:scale-105 hover:from-cyan-600 hover:to-blue-700">
+                <button 
+                  className="group relative bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-2xl transition-all duration-300 transform hover:scale-105 hover:from-cyan-600 hover:to-blue-700 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-offset-2 focus:ring-offset-slate-900"
+                  aria-label="Get started with VideoExplainer AI"
+                >
                   <span className="flex items-center">
                     Get Started
-                    <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
+                    <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" aria-hidden="true" />
                   </span>
-                  <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-lg"></div>
+                  <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 opacity-0 group-hover:opacity-100 transition-opacity duration-300 -z-10 blur-lg" aria-hidden="true" />
                 </button>
               </SignInButton>
               
               <SignUpButton mode="modal">
-                <button className="border border-cyan-500/30 text-cyan-400 px-8 py-4 rounded-xl font-bold text-lg backdrop-blur-lg transition-all duration-300 hover:bg-cyan-500/10 hover:border-cyan-400">
+                <button 
+                  className="border border-cyan-500/30 text-cyan-400 px-8 py-4 rounded-xl font-bold text-lg backdrop-blur-lg transition-all duration-300 hover:bg-cyan-500/10 hover:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-offset-2 focus:ring-offset-slate-900"
+                  aria-label="Create a new account"
+                >
                   Create Account
                 </button>
               </SignUpButton>
@@ -97,10 +126,10 @@ export default function Home() {
       </section>
 
       {/* Features Section */}
-      <section className="relative py-20 lg:py-32">
+      <section className="relative py-20 lg:py-32" aria-labelledby="features-heading">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-4xl lg:text-5xl font-bold text-white mb-4">
+            <h2 id="features-heading" className="text-4xl lg:text-5xl font-bold text-white mb-4">
               Powerful Features
             </h2>
             <p className="text-xl text-cyan-100 max-w-3xl mx-auto">
@@ -112,10 +141,13 @@ export default function Home() {
             {features.map((feature, index) => (
               <div 
                 key={index}
-                className="group bg-white/5 backdrop-blur-lg border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all duration-300 transform hover:scale-105 hover:shadow-2xl"
+                className="group bg-white/5 backdrop-blur-lg border border-white/10 rounded-2xl p-6 hover:bg-white/10 transition-all duration-300 transform hover:scale-105 hover:shadow-2xl focus-within:bg-white/10 focus-within:scale-105"
+                tabIndex={0}
+                role="article"
+                aria-label={`Feature: ${feature.title}`}
               >
                 <div className="bg-gradient-to-r from-cyan-500 to-blue-600 p-3 rounded-xl w-fit mb-4 group-hover:scale-110 transition-transform">
-                  <feature.icon className="h-6 w-6 text-white" />
+                  <feature.icon className="h-6 w-6 text-white" aria-hidden="true" />
                 </div>
                 <h3 className="text-xl font-semibold text-white mb-2">{feature.title}</h3>
                 <p className="text-cyan-100 leading-relaxed">{feature.description}</p>
@@ -126,10 +158,10 @@ export default function Home() {
       </section>
 
       {/* How It Works */}
-      <section className="relative py-20 lg:py-32 bg-white/5">
+      <section className="relative py-20 lg:py-32 bg-white/5" aria-labelledby="how-it-works-heading">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-16">
-            <h2 className="text-4xl lg:text-5xl font-bold text-white mb-4">
+            <h2 id="how-it-works-heading" className="text-4xl lg:text-5xl font-bold text-white mb-4">
               How It Works
             </h2>
             <p className="text-xl text-cyan-100">
@@ -144,12 +176,12 @@ export default function Home() {
               { step: '03', title: 'Ask Questions', desc: 'Interact with your video content', icon: MessageCircle },
               { step: '04', title: 'Get Insights', desc: 'Receive detailed answers and summaries', icon: Sparkles }
             ].map((item, index) => (
-              <div key={index} className="text-center">
+              <div key={index} className="text-center" role="listitem">
                 <div className="relative">
                   <div className="bg-gradient-to-r from-cyan-500 to-blue-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-white font-bold text-xl">
                     {item.step}
                   </div>
-                  <item.icon className="h-8 w-8 text-cyan-400 absolute -top-2 -right-2" />
+                  <item.icon className="h-8 w-8 text-cyan-400 absolute -top-2 -right-2" aria-hidden="true" />
                 </div>
                 <h3 className="text-lg font-semibold text-white mb-2">{item.title}</h3>
                 <p className="text-cyan-100">{item.desc}</p>
@@ -160,9 +192,9 @@ export default function Home() {
       </section>
 
       {/* CTA Section */}
-      <section className="relative py-20 lg:py-32">
+      <section className="relative py-20 lg:py-32" aria-labelledby="cta-heading">
         <div className="max-w-4xl mx-auto text-center px-4 sm:px-6 lg:px-8">
-          <h2 className="text-4xl lg:text-5xl font-bold text-white mb-6">
+          <h2 id="cta-heading" className="text-4xl lg:text-5xl font-bold text-white mb-6">
             Ready to Transform Your Videos?
           </h2>
           <p className="text-xl text-cyan-100 mb-8">
@@ -171,17 +203,36 @@ export default function Home() {
           
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <SignUpButton mode="modal">
-              <button className="bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-8 py-4 rounded-xl font-bold text-lg hover:from-cyan-600 hover:to-blue-700 transition-all transform hover:scale-105">
+              <button 
+                className="bg-gradient-to-r from-cyan-500 to-blue-600 text-white px-8 py-4 rounded-xl font-bold text-lg hover:from-cyan-600 hover:to-blue-700 transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-offset-2 focus:ring-offset-slate-900"
+                aria-label="Start your free trial"
+              >
                 Start Free Trial
               </button>
             </SignUpButton>
             
-            <button className="border border-cyan-500/30 text-cyan-400 px-8 py-4 rounded-xl font-bold text-lg hover:bg-cyan-500/10 transition-all">
+            <button 
+              className="border border-cyan-500/30 text-cyan-400 px-8 py-4 rounded-xl font-bold text-lg hover:bg-cyan-500/10 transition-all focus:outline-none focus:ring-2 focus:ring-cyan-400 focus:ring-offset-2 focus:ring-offset-slate-900"
+              aria-label="Watch a demo of VideoExplainer AI"
+              onClick={() => {
+                // Demo functionality would go here
+                console.log('Demo requested');
+              }}
+            >
               Watch Demo
             </button>
           </div>
         </div>
       </section>
+
+      {/* Accessibility Announcements */}
+      <div 
+        className="sr-only" 
+        aria-live="polite" 
+        aria-atomic="true"
+      >
+        {isRedirecting && 'Redirecting to dashboard...'}
+      </div>
     </div>
   )
 }

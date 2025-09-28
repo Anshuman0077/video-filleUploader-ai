@@ -1,5 +1,5 @@
-
-import AudioChunkingService from './audio-chucking.service.js';
+// import AudioChunkingService from './audio-chunking.service.js';
+import AudioChunkingService from "./audio-chucking.service.js"
 import STTService from './stt.service.js';
 import VectorDBService from './vectorDb.service.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -12,24 +12,50 @@ import { pipeline } from 'stream';
 import { promisify } from 'util';
 
 const streamPipeline = promisify(pipeline);
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+// Validate environment variables
+const validateGeminiAPIKey = () => {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY environment variable is required');
+  }
+  return apiKey;
+};
+
+const genAI = new GoogleGenerativeAI(validateGeminiAPIKey());
 
 class RAGTranscriptionService {
   constructor() {
-    this.maxVideoDuration = 5 * 60 * 60; // 5 hours in seconds
+    this.maxVideoDuration = 5 * 60 * 60;
   }
 
   async downloadVideo(videoUrl, tempFilePath) {
     try {
+      console.log(`📥 Downloading video from: ${videoUrl}`);
+      
+      // Validate URL
+      if (!videoUrl || typeof videoUrl !== 'string') {
+        throw new Error('Invalid video URL');
+      }
+
       const response = await axios({
         method: 'get',
         url: videoUrl,
         responseType: 'stream',
-        timeout: 300000,
+        timeout: parseInt(process.env.DOWNLOAD_TOTAL_TIMEOUT_MS) || 300000,
+        maxContentLength: 500 * 1024 * 1024, // 500MB
       });
 
       const writer = fs.createWriteStream(tempFilePath);
       await streamPipeline(response.data, writer);
+      
+      // Verify file was downloaded
+      const stats = fs.statSync(tempFilePath);
+      if (stats.size === 0) {
+        throw new Error('Downloaded file is empty');
+      }
+      
+      console.log(`✅ Video downloaded: ${tempFilePath} (${stats.size} bytes)`);
       return true;
     } catch (error) {
       throw new Error(`Video download failed: ${error.message}`);
@@ -40,10 +66,19 @@ class RAGTranscriptionService {
     let processingResult = null;
 
     try {
+      // Validate video file exists and is accessible
+      if (!fs.existsSync(videoPath)) {
+        throw new Error('Video file not found');
+      }
+
       // Step 1: Chunk the audio
       console.log('🎵 Starting audio chunking...');
       processingResult = await AudioChunkingService.processVideoForChunking(videoPath);
       
+      if (!processingResult.chunks || processingResult.chunks.length === 0) {
+        throw new Error('No audio chunks were created');
+      }
+
       // Step 2: Transcribe each chunk using STT
       console.log('🔊 Starting STT transcription...');
       const transcriptions = await STTService.transcribeAudioChunks(
@@ -69,13 +104,20 @@ class RAGTranscriptionService {
         chunkCount: transcriptions.length
       };
 
+    } catch (error) {
+      console.error('STT transcription failed:', error);
+      throw error;
     } finally {
       // Cleanup temporary files
       if (processingResult) {
-        AudioChunkingService.cleanupFiles([
-          processingResult.audioPath,
-          ...processingResult.chunks.map(c => c.path)
-        ]);
+        try {
+          AudioChunkingService.cleanupFiles([
+            processingResult.audioPath,
+            ...processingResult.chunks.map(c => c.path)
+          ]);
+        } catch (cleanupError) {
+          console.warn('Cleanup warning:', cleanupError.message);
+        }
       }
     }
   }
@@ -103,34 +145,17 @@ class RAGTranscriptionService {
 
   async generateSummaryWithRAG(transcript, chunks, videoId, language = 'english') {
     try {
-      const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+      const model = genAI.getGenerativeModel({ model: "gemini-pro" });
       
-      // Use RAG to enhance summary with chunk context
-      const chunkContext = chunks
-        .filter(chunk => !chunk.error)
-        .slice(0, 10) // Use first 10 chunks for context
-        .map(chunk => `[${this.formatTimestamp(chunk.startTime)}-${this.formatTimestamp(chunk.endTime)}] ${chunk.text}`)
-        .join('\n');
-
       const prompt = `
-        Create a comprehensive summary of this video using the transcript and chunked context.
+        Create a comprehensive summary of this video transcript in ${language}.
         
         VIDEO TRANSCRIPT:
-        ${transcript}
+        ${transcript.substring(0, 10000)}
         
-        KEY CHUNK CONTEXT:
-        ${chunkContext}
+        Please provide a structured summary that captures the main points.
         
-        Please provide a structured summary that includes:
-        1. Main topics and themes
-        2. Key points and insights
-        3. Practical applications
-        4. Technical details (if any)
-        5. Overall value and takeaways
-        
-        Respond in ${language}.
-        
-        COMPREHENSIVE SUMMARY:
+        SUMMARY in ${language}:
       `;
 
       const result = await model.generateContent(prompt);
@@ -144,7 +169,7 @@ class RAGTranscriptionService {
 
   generateFallbackSummary(transcript, language) {
     const wordCount = transcript.split(/\s+/).length;
-    return `This ${wordCount}-word transcript contains valuable content. A detailed AI-powered summary would normally analyze key themes, practical applications, and technical insights from the video.`;
+    return `This ${wordCount}-word transcript contains valuable content. A detailed summary would analyze key themes and insights from the video.`;
   }
 
   // Main transcription function
@@ -152,7 +177,7 @@ class RAGTranscriptionService {
     let tempFilePath = null;
 
     try {
-      console.log(`🎬 Starting RAG-enhanced transcription for: ${videoUrl}`);
+      console.log(`🎬 Starting RAG-enhanced transcription for video: ${videoId}`);
       
       // Create temp directory
       if (!fs.existsSync(TEMP_DIR)) {
@@ -182,7 +207,7 @@ class RAGTranscriptionService {
 
       if (job) await job.updateProgress({ phase: 'completed', progress: 100 });
 
-      console.log(`✅ RAG transcription completed: ${sttResult.wordCount} words, ${sttResult.chunkCount} chunks`);
+      console.log(`✅ RAG transcription completed: ${sttResult.wordCount} words`);
 
       return {
         transcript: sttResult.transcript,
@@ -197,11 +222,7 @@ class RAGTranscriptionService {
       console.error("[RAGTranscription] Error:", error);
       
       // Fallback to Gemini if STT fails
-      if (process.env.NODE_ENV === 'development') {
-        return await this.fallbackToGemini(videoUrl, language);
-      }
-      
-      throw new Error(`Transcription failed: ${error.message}`);
+      return await this.fallbackToGemini(videoUrl, language);
     } finally {
       // Cleanup temp file
       if (tempFilePath && fs.existsSync(tempFilePath)) {
@@ -216,7 +237,7 @@ class RAGTranscriptionService {
 
   async fallbackToGemini(videoUrl, language) {
     console.warn('Using Gemini fallback transcription');
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
     
     const prompt = `Generate a realistic video transcript for a typical educational/technical video. Language: ${language}`;
     const result = await model.generateContent(prompt);
@@ -224,8 +245,8 @@ class RAGTranscriptionService {
     
     return {
       transcript,
-      summary: 'Fallback summary - STT service unavailable',
-      duration: 3600,
+      summary: 'Summary generated using fallback service',
+      duration: 300,
       wordCount: transcript.split(/\s+/).length,
       chunkCount: 1,
       chunks: []

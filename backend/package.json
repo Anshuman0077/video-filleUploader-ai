@@ -11,6 +11,9 @@
     "worker": "node src/workers/runWorker.js",
     "dev:worker": "nodemon src/workers/runWorker.js",
     "dev:worker:stable": "node src/workers/runWorker.js",
+    "test:huggingface": "node src/test-huggingface.js",
+    "test:huggingface-quick": "node src/test-huggingface.js --quick",
+    "create-test-samples": "node src/create-test-samples.js",
     "test": "jest"
   },
   "keywords": [],

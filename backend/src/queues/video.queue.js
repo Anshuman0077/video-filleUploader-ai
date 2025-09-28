@@ -19,7 +19,7 @@ export const processVideoQueue = new Queue('video-processing', {
 processVideoQueue.on('error', (err) => {
   console.error('[VideoQueue] Queue error:', err);
 });
-
+  
 processVideoQueue.on('waiting', (job) => {
   console.log(`[VideoQueue] Job ${job.id} is waiting`);
 });

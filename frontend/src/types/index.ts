@@ -1,10 +1,11 @@
+// Enhanced TypeScript interfaces with better validation and security
 export interface Video {
   _id: string;
   title: string;
   description: string;
   url?: string;
   cloudinaryUrl?: string;
-  status: 'queued' | 'processing' | 'completed' | 'failed';
+  status: VideoStatus;
   uploadedAt: string;
   createdAt?: string;
   processedAt?: string;
@@ -14,6 +15,10 @@ export interface Video {
   language?: string;
   fileSize?: number;
   mimeType?: string;
+  userId: string;
+  error?: string;
+  duration?: number;
+  wordCount?: number;
 }
 
 export type VideoStatus = 'queued' | 'processing' | 'completed' | 'failed';
@@ -28,6 +33,10 @@ export interface Question {
   askedAt: string;
   createdAt: string;
   updatedAt: string;
+  confidence?: number;
+  relevantChunks?: number;
+  processingTime?: number;
+  isFallback?: boolean;
 }
 
 export interface Message {
@@ -36,6 +45,9 @@ export interface Message {
   timestamp: Date;
   id?: string;
   videoId?: string;
+  confidence?: number;
+  error?: boolean;
+  processingTime?: number;
 }
 
 export interface ApiResponse<T = any> {
@@ -43,11 +55,14 @@ export interface ApiResponse<T = any> {
   data?: T;
   error?: string;
   errors?: string[];
+  code?: string;
+  timestamp?: string;
 }
 
 export interface StandardApiResponse<T> {
   message: string;
   data: T;
+  timestamp?: string;
 }
 
 export interface PaginatedResponse<T> {
@@ -67,6 +82,7 @@ export interface UploadResponse {
     videoId: string;
     status: VideoStatus;
     title: string;
+    cloudinaryUrl?: string;
   };
 }
 
@@ -78,6 +94,8 @@ export interface VideoUploadProgress {
   title?: string;
   transcript?: string;
   summary?: string;
+  phase?: string;
+  timestamp?: string;
 }
 
 export interface User {
@@ -87,6 +105,7 @@ export interface User {
   firstName?: string;
   lastName?: string;
   imageUrl?: string;
+  sessionId?: string;
 }
 
 export interface SocketEvents {
@@ -100,10 +119,11 @@ export interface SocketEvents {
     error?: string;
     transcript?: string;
     summary?: string;
+    timestamp?: string;
   };
   'room-joined': { videoId: string };
-  'error': { message: string };
-  'processing-progress': { videoId: string; phase: string; progress: number };
+  'error': { message: string; code?: string };
+  'processing-progress': { videoId: string; phase: string; progress: number; timestamp?: string };
 }
 
 export interface ServerToClientEvents extends SocketEvents {}
@@ -117,9 +137,11 @@ export interface ApiError {
   code?: string;
   status?: number;
   errors?: string[];
+  timestamp?: string;
+  errorId?: string;
 }
 
-export interface FormData {
+export interface UploadFormData {
   title: string;
   description: string;
   file: File | null;
@@ -131,6 +153,8 @@ export interface VideoFilters {
   page?: number;
   limit?: number;
   search?: string;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
 }
 
 export interface ProcessingProgress {
@@ -138,4 +162,35 @@ export interface ProcessingProgress {
   progress: number;
   retryAttempt?: number;
   lastError?: string;
+  timestamp?: string;
 }
+
+export interface HealthCheck {
+  status: 'healthy' | 'unhealthy' | 'degraded';
+  timestamp: string;
+  services?: {
+    database: { status: string; details: string };
+    redis: { status: string; details: string };
+    vectorDB: { status: string; details: string };
+    stt: { status: string; details: string };
+  };
+}
+
+// Validation interfaces
+export interface ValidationResult {
+  isValid: boolean;
+  errors: string[];
+}
+
+// Enhanced error types
+export interface FrontendError {
+  message: string;
+  code: string;
+  severity: 'low' | 'medium' | 'high';
+  retryable: boolean;
+  timestamp: string;
+  context?: Record<string, any>;
+}
+
+// Socket connection state
+export type SocketConnectionState = 'connecting' | 'connected' | 'disconnected' | 'error' | 'reconnecting';

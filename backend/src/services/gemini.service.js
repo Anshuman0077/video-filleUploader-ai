@@ -1,26 +1,37 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
+
+// Validate environment variables
+const validateEnvironment = () => {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('GEMINI_API_KEY environment variable is required');
+  }
+  if (!apiKey.startsWith('AIza')) {
+    throw new Error('GEMINI_API_KEY appears to be invalid');
+  }
+  return apiKey;
+};
 
 // Initialize with proper error handling
 let genAI;
 let isGeminiAvailable = false;
 
 try {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (apiKey && apiKey.startsWith('AIza')) {
-    genAI = new GoogleGenerativeAI(apiKey);
-    isGeminiAvailable = true;
-    console.log('✅ Gemini API initialized successfully');
-  } else {
-    console.warn('❌ Gemini API key is missing or invalid format');
-    isGeminiAvailable = false;
-  }
+  const apiKey = validateEnvironment();
+  genAI = new GoogleGenerativeAI(apiKey);
+  isGeminiAvailable = true;
+  console.log('✅ Gemini API initialized successfully');
 } catch (error) {
   console.error('❌ Gemini initialization error:', error.message);
   isGeminiAvailable = false;
 }
 
 async function retryWithBackoff(fn, options = {}) {
-  const { retries = 2, baseDelayMs = 1000 } = options;
+  const { retries = 3, baseDelayMs = 1000 } = options;
   let attempt = 0;
   let lastError = null;
   
@@ -30,7 +41,10 @@ async function retryWithBackoff(fn, options = {}) {
     } catch (err) {
       lastError = err;
       if (attempt === retries) break;
-      const delay = Math.min(baseDelayMs * Math.pow(2, attempt), 10000);
+      
+      // Exponential backoff with jitter
+      const delay = Math.min(baseDelayMs * Math.pow(2, attempt) + Math.random() * 1000, 30000);
+      console.log(`Retry attempt ${attempt + 1} after ${delay}ms`);
       await new Promise(resolve => setTimeout(resolve, delay));
       attempt += 1;
     }
@@ -38,15 +52,26 @@ async function retryWithBackoff(fn, options = {}) {
   throw lastError;
 }
 
+// Input validation
+const validateInput = (text, maxLength = 10000) => {
+  if (!text || typeof text !== 'string') {
+    throw new Error('Input text must be a non-empty string');
+  }
+  if (text.length > maxLength) {
+    throw new Error(`Input text exceeds maximum length of ${maxLength} characters`);
+  }
+  return text.trim();
+};
+
 // Test Gemini API connection
 async function testGeminiConnection() {
   if (!isGeminiAvailable || !genAI) return false;
   
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-    const result = await model.generateContent("Test connection");
-    await result.response;
-    return true;
+    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+    const result = await model.generateContent("Test connection - respond with 'OK'");
+    const response = await result.response;
+    return response.text().trim() === 'OK';
   } catch (error) {
     console.error('Gemini connection test failed:', error.message);
     return false;
@@ -55,25 +80,27 @@ async function testGeminiConnection() {
 
 // Generate answer using Gemini
 async function generateAnswer(transcript, question, language = 'english') {
-  // Test connection first
-  const isConnected = await testGeminiConnection();
-  if (!isConnected) {
-    console.warn('Gemini not available, using smart fallback');
-    return getSmartAnswer(question, transcript, language);
-  }
-
   try {
-    // Use gemini-pro model which is more reliable
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    // Validate inputs
+    const validatedTranscript = validateInput(transcript, 50000);
+    const validatedQuestion = validateInput(question, 1000);
+    
+    const isConnected = await testGeminiConnection();
+    if (!isConnected) {
+      console.warn('Gemini not available, using smart fallback');
+      return getSmartAnswer(validatedQuestion, validatedTranscript, language);
+    }
+
+    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
     
     const prompt = `
       You are an AI assistant that answers questions about video content.
       Based EXCLUSIVELY on the following video transcript, answer the user's question.
       
       VIDEO TRANSCRIPT:
-      ${transcript}
+      ${validatedTranscript}
       
-      USER'S QUESTION: ${question}
+      USER'S QUESTION: ${validatedQuestion}
       
       IMPORTANT RULES:
       1. Answer ONLY using information from the transcript above
@@ -96,22 +123,24 @@ async function generateAnswer(transcript, question, language = 'english') {
 
 // Generate video summary using Gemini
 async function generateSummary(transcript, language = 'english') {
-  const isConnected = await testGeminiConnection();
-  if (!isConnected) {
-    console.warn('Gemini not available, using smart summary');
-    return getSmartSummary(transcript, language);
-  }
-
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const validatedTranscript = validateInput(transcript, 50000);
+    
+    const isConnected = await testGeminiConnection();
+    if (!isConnected) {
+      console.warn('Gemini not available, using smart summary');
+      return getSmartSummary(validatedTranscript, language);
+    }
+
+    const model = genAI.getGenerativeModel({ model: "gemini-pro" });
     
     const prompt = `
       Create a comprehensive summary of the following video transcript in ${language}.
       
       TRANSCRIPT:
-      ${transcript}
+      ${validatedTranscript.substring(0, 10000)}
       
-      Please provide a clear, well-structured summary that captures the main points.
+      Please provide a structured summary that captures the main points.
       
       SUMMARY in ${language}:
     `;
@@ -128,39 +157,22 @@ async function generateSummary(transcript, language = 'english') {
 // Smart fallback functions
 function getSmartAnswer(question, transcript, language) {
   const questionLower = question.toLowerCase().trim();
-  const transcriptLower = transcript.toLowerCase();
   
   // Handle greetings
   if (questionLower.includes('hi') || questionLower.includes('hello') || questionLower.includes('hey')) {
     return "Hello! I'm here to help answer questions about this video. What would you like to know?";
   }
   
-  // Check if transcript is real (not fallback)
+  // Check if transcript is real
   const isRealTranscript = transcript && 
     !transcript.includes('fallback') && 
     !transcript.includes('limitations') && 
     transcript.length > 50;
   
   if (isRealTranscript) {
-    // Try to provide basic answers based on transcript content
-    if (questionLower.includes('summary') || questionLower.includes('summarize') || questionLower.includes('overview')) {
-      return `Based on the ${transcript.length}-character transcript, I can provide a summary. The video appears to contain substantial content that could be summarized.`;
-    }
-    
-    if (questionLower.includes('what') || questionLower.includes('how') || questionLower.includes('explain')) {
-      // Check if transcript contains relevant keywords
-      const keywords = questionLower.split(' ').filter(word => word.length > 3);
-      const hasRelevantContent = keywords.some(keyword => transcriptLower.includes(keyword));
-      
-      if (hasRelevantContent) {
-        return `The transcript contains content related to your question. While detailed AI analysis is temporarily unavailable, the transcript does discuss topics relevant to "${question}".`;
-      }
-    }
-    
     return "I can answer questions about this video's content. The transcript is available and contains meaningful information that I can help you explore.";
   }
   
-  // If transcript is fallback
   return "I cannot answer questions about this video because the transcript is not available. The video may still be processing or there might be technical limitations.";
 }
 
@@ -172,21 +184,20 @@ function getSmartSummary(transcript, language) {
   
   if (isRealTranscript) {
     const wordCount = transcript.split(' ').length;
-    const sentenceCount = (transcript.match(/[.!?]+/g) || []).length;
-    
-    return `This video transcript contains ${wordCount} words across ${sentenceCount} sentences. The content appears substantial and meaningful. A proper AI-generated summary would normally be available here.`;
+    return `This video transcript contains ${wordCount} words of meaningful content. A comprehensive summary would normally be generated here.`;
   }
   
   return "Video summary is currently unavailable. The transcript processing service is experiencing temporary limitations.";
 }
 
-// Generate embeddings
+// Generate embeddings - Fixed model name
 async function generateEmbeddings(text) {
   if (!isGeminiAvailable || !genAI) return null;
 
   try {
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
-    const result = await model.embedContent(text);
+    const validatedText = validateInput(text, 10000);
+    const model = genAI.getGenerativeModel({ model: "embedding-001" });
+    const result = await model.embedContent(validatedText);
     return result.embedding.values;
   } catch (error) {
     console.warn('Embedding generation error:', error.message);
