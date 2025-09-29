@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useUser, useAuth } from '@clerk/nextjs'; // Added useAuth
+import { useUser, useAuth } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Video, VideoFilters } from '@/types';
@@ -40,6 +40,7 @@ interface UploadFormData {
 
 export default function Dashboard() {
   const { user, isSignedIn, isLoaded } = useUser();
+  const { getToken } = useAuth(); // Add this
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
@@ -63,6 +64,11 @@ export default function Dashboard() {
   });
 
   
+  useEffect(() => {
+    if (isSignedIn) {
+      apiClient.setTokenGetter(getToken);
+    }
+  }, [isSignedIn, getToken]);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -169,7 +175,22 @@ export default function Dashboard() {
     }));
 
     try {
+
+      const handleUploadProgress = (event: CustomEvent) => {
+        const { progress, filename } = event.detail;
+        if (filename === uploadForm.file?.name) {
+          toast.loading(`Uploading: ${progress}%`, { 
+            id: 'upload-progress' 
+          });
+        }
+      };
+      window.addEventListener('upload-progress', handleUploadProgress as EventListener);
+
       const result = await apiClient.uploadVideo(uploadForm);
+      
+      // Remove progress listener
+      window.removeEventListener('upload-progress', handleUploadProgress as EventListener);
+      toast.dismiss('upload-progress');
       
       // Reset form and close modal
       setUploadForm({

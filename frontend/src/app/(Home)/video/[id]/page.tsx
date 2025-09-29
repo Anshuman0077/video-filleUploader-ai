@@ -8,7 +8,6 @@ import type { ReactPlayerProps } from 'react-player';
 import { Video, Message, ProcessingProgress } from '@/types';
 import { ApiClientError } from '@/lib/api';
 import { apiClient } from '@/lib/api';
-import { socketService } from '@/lib/socket';
 import { getStatusBadgeClasses, getStatusIcon, getStatusDescription } from '@/lib/statusStyles';
 import toast from 'react-hot-toast';
 import {
@@ -47,6 +46,13 @@ export default function VideoPage() {
   const [isPlaying, setIsPlaying] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<any>(null);
+
+  // Set up API client token getter
+  useEffect(() => {
+    if (isSignedIn) {
+      apiClient.setTokenGetter(getToken);
+    }
+  }, [isSignedIn, getToken]);
 
   useEffect(() => {
     if (!isSignedIn && isLoaded) {
@@ -97,45 +103,38 @@ export default function VideoPage() {
     if (id && isSignedIn) {
       fetchVideoData();
     }
-  }, [id, isSignedIn, isLoaded, router]);
+  }, [id, isSignedIn, isLoaded, router, getToken]);
 
+  // Poll for video status updates if processing
   useEffect(() => {
-    // Setup socket connection for real-time updates
-    if (video && (video.status === 'processing' || video.status === 'queued')) {
-      const setupSocket = async () => {
-        const token = await getToken();
-        if (token) {
-          const socket = socketService.connect(id, token);
+    let intervalId: NodeJS.Timeout;
+    
+    if (isProcessing && video) {
+      intervalId = setInterval(async () => {
+        try {
+          const updatedVideo = await apiClient.getVideo(id);
+          setVideo(updatedVideo);
           
-          socket.on('video-processed', (data) => {
-            if (data.videoId === id) {
-              setIsProcessing(false);
-              setProcessingProgress(null);
-              // Refresh video data
-              apiClient.getVideo(id).then(setVideo);
-              toast.success('Video processing completed!');
-            }
-          });
-
-          socket.on('processing-progress', (data) => {
-            if (data.videoId === id) {
-              setProcessingProgress(data);
-            }
-          });
-
-          socket.on('error', (error) => {
-            toast.error(error.message);
-          });
+          if (updatedVideo.status === 'completed') {
+            setIsProcessing(false);
+            setProcessingProgress(null);
+            toast.success('Video processing completed!');
+            clearInterval(intervalId);
+          } else if (updatedVideo.status === 'failed') {
+            setIsProcessing(false);
+            toast.error('Video processing failed');
+            clearInterval(intervalId);
+          }
+        } catch (error) {
+          console.error('Error polling video status:', error);
         }
-      };
-      
-      setupSocket();
-      
-      return () => {
-        socketService.disconnect();
-      };
+      }, 5000); // Poll every 5 seconds
     }
-  }, [video, id, getToken]);
+    
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [isProcessing, video, id]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -192,11 +191,14 @@ export default function VideoPage() {
     if (!video) return;
     
     try {
+      setIsLoading(true);
       const result = await apiClient.generateSummary(id, video.language);
       setVideo(prev => prev ? { ...prev, summary: result.summary } : null);
       toast.success('Summary generated successfully!');
     } catch (error) {
       toast.error('Failed to generate summary');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -299,24 +301,20 @@ export default function VideoPage() {
                     <div className="text-center">
                       <Zap className="h-12 w-12 text-yellow-400 animate-pulse mx-auto mb-4" />
                       <p className="text-cyan-100 text-lg">Video is being processed</p>
-                      {processingProgress && (
-                        <div className="mt-4">
-                          <div className="w-64 bg-white/10 rounded-full h-2 mx-auto">
-                            <div 
-                              className="bg-gradient-to-r from-cyan-400 to-blue-500 h-2 rounded-full transition-all duration-300"
-                              style={{ width: `${processingProgress.progress}%` }}
-                            ></div>
-                          </div>
-                          <p className="text-cyan-100 text-sm mt-2">
-                            {processingProgress.phase} ({Math.round(processingProgress.progress)}%)
-                          </p>
-                        </div>
-                      )}
+                      <p className="text-cyan-100 text-sm mt-2">
+                        This may take a few minutes. Please wait...
+                      </p>
                     </div>
                   ) : (
                     <div className="text-center">
                       <AlertCircle className="h-12 w-12 text-red-400 mx-auto mb-4" />
                       <p className="text-cyan-100 text-lg">Video processing failed</p>
+                      <button 
+                        onClick={() => router.push('/dashboard')}
+                        className="mt-4 bg-cyan-500 text-white px-4 py-2 rounded-lg hover:bg-cyan-600 transition-colors"
+                      >
+                        Back to Dashboard
+                      </button>
                     </div>
                   )}
                 </div>
@@ -476,10 +474,11 @@ export default function VideoPage() {
                   {!video.summary && (
                     <button
                       onClick={generateSummary}
-                      className="w-full mt-3 bg-gradient-to-r from-purple-500 to-pink-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:from-purple-600 hover:to-pink-700 transition-all"
+                      disabled={isLoading}
+                      className="w-full mt-3 bg-gradient-to-r from-purple-500 to-pink-600 text-white px-4 py-2 rounded-xl text-sm font-semibold hover:from-purple-600 hover:to-pink-700 disabled:opacity-50 transition-all"
                     >
                       <Sparkles className="h-3 w-3 inline-block mr-1" />
-                      Generate AI Summary
+                      {isLoading ? 'Generating...' : 'Generate AI Summary'}
                     </button>
                   )}
                 </div>

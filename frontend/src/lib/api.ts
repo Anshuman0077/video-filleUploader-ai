@@ -59,7 +59,6 @@ class ApiClientError extends Error {
     this.timestamp = new Date().toISOString();
     this.retryable = retryable;
     
-    // Maintain proper prototype chain
     Object.setPrototypeOf(this, ApiClientError.prototype);
   }
 
@@ -99,19 +98,16 @@ class ApiClient {
     this.setupInterceptors();
   }
 
-  // Method to set token getter from components
   setTokenGetter(getter: () => Promise<string | null>) {
     this.tokenGetter = getter;
   }
 
   private setupInterceptors() {
-    // Request interceptor with enhanced security
     this.axiosInstance.interceptors.request.use(
       async (config) => {
         const requestId = Math.random().toString(36).substring(2, 15);
         config.headers['X-Request-ID'] = requestId;
         
-        // Get token using the provided token getter
         if (this.tokenGetter) {
           try {
             const token = await this.tokenGetter();
@@ -122,11 +118,9 @@ class ApiClient {
             }
           } catch (error) {
             console.warn('🔐 Auth token retrieval failed:', error);
-            // Don't throw here to allow public endpoints to work
           }
         }
 
-        // Log request in development
         if (process.env.NODE_ENV === 'development') {
           console.log(`🚀 API Request: ${config.method?.toUpperCase()} ${config.url}`, {
             headers: config.headers,
@@ -142,10 +136,8 @@ class ApiClient {
       }
     );
 
-    // Response interceptor with enhanced error handling
     this.axiosInstance.interceptors.response.use(
       (response: AxiosResponse) => {
-        // Log successful responses in development
         if (process.env.NODE_ENV === 'development') {
           console.log(`✅ API Response: ${response.status} ${response.config.url}`, {
             data: response.data
@@ -157,7 +149,6 @@ class ApiClient {
       (error: AxiosError) => {
         const enhancedError = this.handleApiError(error);
         
-        // Log errors appropriately
         if (enhancedError.status >= 500) {
           console.error('❌ Server error:', enhancedError);
         } else if (enhancedError.status >= 400) {
@@ -184,7 +175,6 @@ class ApiClient {
       const data = error.response.data as any;
       const status = error.response.status;
       
-      // Enhanced error categorization
       let retryable = false;
       if (status >= 500 || status === 429) {
         retryable = true;
@@ -240,7 +230,6 @@ class ApiClient {
       } catch (error) {
         lastError = this.enhanceError(error);
         
-        // Only retry on retryable errors
         if (attempt < attempts && lastError.retryable) {
           const delay = this.baseRetryDelay * Math.pow(2, attempt - 1);
           console.warn(`🔄 ${operationName} attempt ${attempt} failed, retrying in ${delay}ms:`, lastError.message);
@@ -255,7 +244,6 @@ class ApiClient {
     throw lastError;
   }
 
-  // Enhanced file validation
   private validateFile(file: File): ValidationResult {
     const errors: string[] = [];
     const maxSize = 500 * 1024 * 1024; // 500MB
@@ -275,7 +263,6 @@ class ApiClient {
         errors.push('Invalid file type. Supported formats: MP4, MPEG, MOV, AVI, WebM, MKV');
       }
       
-      // Basic filename validation
       if (file.name.length > 255) {
         errors.push('Filename too long');
       }
@@ -323,9 +310,7 @@ class ApiClient {
     };
   }
 
-  // Enhanced Video APIs
   async uploadVideo(formData: UploadFormData): Promise<UploadResponse['data']> {
-    // Client-side validation
     const validation = this.validateUploadForm(formData);
     if (!validation.isValid) {
       throw new ApiClientError(
@@ -351,12 +336,10 @@ class ApiClient {
             "Content-Type": "multipart/form-data",
             "X-Upload-Filename": formData.file?.name || 'unknown'
           },
-          timeout: 300000, // 5 minutes for large uploads
+          timeout: 300000,
           onUploadProgress: (progressEvent) => {
             if (progressEvent.total && progressEvent.total > 0) {
               const progress = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-              
-              // Enhanced progress event with more context
               window.dispatchEvent(new CustomEvent('upload-progress', { 
                 detail: { 
                   progress,
@@ -378,7 +361,6 @@ class ApiClient {
     return this.retryRequest(async () => {
       const params = new URLSearchParams();
       
-      // Enhanced parameter validation
       if (filters?.page) {
         const page = Math.max(1, parseInt(filters.page.toString()));
         params.append('page', page.toString());
@@ -401,7 +383,6 @@ class ApiClient {
   }
 
   async getVideo(id: string): Promise<Video> {
-    // Enhanced ID validation
     if (!id || typeof id !== 'string' || id.length < 10) {
       throw new ApiClientError('Invalid video ID format', 400, 'INVALID_ID');
     }
@@ -425,9 +406,7 @@ class ApiClient {
     }, "Fetch transcript");
   }
 
-  // Enhanced Question APIs
   async askQuestion(videoId: string, question: string, language?: string): Promise<Question> {
-    // Enhanced input validation
     if (!videoId || typeof videoId !== 'string') {
       throw new ApiClientError('Valid video ID is required', 400, 'INVALID_VIDEO_ID');
     }
@@ -441,7 +420,6 @@ class ApiClient {
       throw new ApiClientError('Question must be less than 1000 characters', 400, 'QUESTION_TOO_LONG');
     }
     
-    // Security: basic injection prevention
     const dangerousPattern = /[<>$`|&;{}()[\]]/;
     if (dangerousPattern.test(trimmedQuestion)) {
       throw new ApiClientError('Question contains invalid characters', 400, 'INVALID_CHARACTERS');
@@ -492,7 +470,6 @@ class ApiClient {
     }, "Generate summary");
   }
 
-  // Enhanced Utility Methods
   async healthCheck(): Promise<HealthCheck> {
     return this.retryRequest(async () => {
       const response = await this.axiosInstance.get<HealthCheck>('/health');
@@ -507,12 +484,10 @@ class ApiClient {
     }, "Advanced health check");
   }
 
-  // Method to check if the client is properly configured
   isConfigured(): boolean {
     return !!API_BASE_URL && API_BASE_URL !== 'http://localhost:5000/api';
   }
 
-  // Method to get current configuration
   getConfig() {
     return {
       baseURL: API_BASE_URL,
@@ -549,4 +524,4 @@ export const handleApiError = (error: unknown, fallbackMessage: string = 'An err
     message: fallbackMessage,
     code: 'UNKNOWN_ERROR',
   };
-};
+};      
